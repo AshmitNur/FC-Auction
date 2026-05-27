@@ -471,6 +471,46 @@ th {
   padding: 10px 0;
 }
 
+.budget-list {
+  display: grid;
+  gap: 2px;
+}
+
+.budget-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+}
+
+.budget-row.current {
+  margin: 4px 0;
+  border: 1px solid rgba(154, 243, 77, 0.38);
+  border-radius: 10px;
+  background: rgba(154, 243, 77, 0.08);
+  padding: 10px;
+}
+
+.budget-team {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.budget-team span {
+  color: var(--ink);
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.budget-team small {
+  color: var(--soft);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .squad-list div {
   display: grid;
   grid-template-columns: minmax(92px, 0.82fr) minmax(0, 1fr) auto auto;
@@ -566,7 +606,7 @@ th {
 }
 
 .player-bid-stage {
-  grid-row: span 2;
+  grid-row: span 3;
   display: grid;
   gap: 18px;
   border: 1px solid var(--line);

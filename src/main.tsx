@@ -137,6 +137,14 @@ function formatCoins(value: number) {
   return `${compactMoney.format(value)} coins`;
 }
 
+function participantSlot(participant: Participant) {
+  return Number(participant.id.match(/\d+$/)?.[0] || 0);
+}
+
+function sortParticipantsByGroup(participants: Participant[]) {
+  return [...participants].sort((a, b) => a.group.localeCompare(b.group) || participantSlot(a) - participantSlot(b) || a.teamName.localeCompare(b.teamName));
+}
+
 function nameFor(participants: Participant[], idValue: string | null | undefined) {
   const participant = participants.find((item) => item.id === idValue);
   return participant ? participant.teamName || participant.name : 'TBD';
@@ -283,6 +291,24 @@ function Stat({ label, value, tone = 'default' }: { label: string; value: string
 
 function Pill({ children, tone = 'neutral' }: { children: React.ReactNode; tone?: string }) {
   return <span className={`pill pill-${tone}`}>{children}</span>;
+}
+
+function BudgetList({ participants, currentParticipantId }: { participants: Participant[]; currentParticipantId?: string }) {
+  const orderedParticipants = sortParticipantsByGroup(participants);
+  return (
+    <div className="budget-list">
+      {orderedParticipants.map((participant) => (
+        <div className={`budget-row ${participant.id === currentParticipantId ? 'current' : ''}`} key={participant.id}>
+          <div className="budget-team">
+            <span>{participant.teamName}</span>
+            <small>{participant.name} / Group {participant.group}</small>
+          </div>
+          <strong>{formatCoins(participant.remainingBudget)}</strong>
+        </div>
+      ))}
+      {!orderedParticipants.length && <p className="empty">No joined players yet.</p>}
+    </div>
+  );
 }
 
 function AuthGate({
@@ -495,7 +521,6 @@ function Dashboard({
   standings: { A: Standing[]; B: Standing[] };
   send: (event: string, data?: unknown) => void;
 }) {
-  const leaders = [...state.participants].sort((a, b) => b.remainingBudget - a.remainingBudget).slice(0, 4);
   return (
     <div className="dashboard-grid">
       <section className="command-panel">
@@ -538,14 +563,9 @@ function Dashboard({
       <section className="budget-panel">
         <div className="section-title">
           <span>03</span>
-          <h2>Budgets</h2>
+          <h2>Remaining Budgets</h2>
         </div>
-        {leaders.map((participant) => (
-          <div className="budget-row" key={participant.id}>
-            <span>{participant.teamName}</span>
-            <strong>{formatCoins(participant.remainingBudget)}</strong>
-          </div>
-        ))}
+        <BudgetList participants={state.participants} />
       </section>
     </div>
   );
@@ -697,6 +717,11 @@ function PlayerPortal({
           })}
           {!squad.length && <p className="empty">Your bought players will appear here after the admin sells a player to you.</p>}
         </div>
+      </section>
+
+      <section className="panel">
+        <div className="section-title"><span>All Players</span><h2>Remaining Budgets</h2></div>
+        <BudgetList participants={state.participants} currentParticipantId={participant.id} />
       </section>
 
       <section className="panel">
