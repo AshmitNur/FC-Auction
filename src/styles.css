@@ -396,14 +396,36 @@ th {
 
 .ledger div,
 .budget-row,
-.mini-table div,
-.squad-list div {
+.mini-table div {
   display: grid;
   grid-template-columns: 82px minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
   border-bottom: 1px solid var(--line);
   padding: 10px 0;
+}
+
+.squad-list div {
+  display: grid;
+  grid-template-columns: minmax(92px, 0.82fr) minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  padding: 10px 0;
+}
+
+.release-button {
+  min-height: 32px;
+  padding: 0 10px;
+  border-color: rgba(239, 107, 95, 0.36);
+  background: rgba(239, 107, 95, 0.08);
+  color: #ffd5cf;
+  font-size: 12px;
+}
+
+.release-button:hover {
+  border-color: rgba(239, 107, 95, 0.72);
+  background: rgba(239, 107, 95, 0.16);
 }
 
 .ledger span,
@@ -1407,6 +1429,19 @@ tr.qualified td:first-child {
   .mini-table div,
   .squad-list div {
     grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .squad-list div span {
+    grid-column: 1 / -1;
+  }
+
+  .squad-list div em {
+    justify-self: end;
+  }
+
+  .release-button {
+    grid-column: 1 / -1;
+    width: 100%;
   }
 
   .ledger div span,

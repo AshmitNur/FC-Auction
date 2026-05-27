@@ -371,11 +371,30 @@ function undoLastSale(state) {
   if (saleIndex === -1) throw new Error('No sale is available to undo.');
 
   const sale = state.auction.history[saleIndex];
-  const participant = participantById(state, sale.participantId);
   state.squads[sale.participantId] = (state.squads[sale.participantId] || []).filter(
     (purchase) => purchase.playerId !== sale.playerId,
   );
   state.auction.history.splice(saleIndex, 1);
+  normalizeBudgets(state);
+}
+
+function releasePlayer(state, data) {
+  const participant = participantById(state, data.participantId);
+  if (!participant) throw new Error('Participant not found.');
+
+  const squad = state.squads[participant.id] || [];
+  const purchase = squad.find((item) => item.id === data.purchaseId || item.playerId === data.playerId);
+  if (!purchase) throw new Error('Player purchase not found in this squad.');
+
+  state.squads[participant.id] = squad.filter((item) => item.id !== purchase.id);
+  state.auction.history.unshift({
+    id: id('release'),
+    type: 'release',
+    playerId: purchase.playerId,
+    participantId: participant.id,
+    amount: purchase.purchasePrice,
+    timestamp: new Date().toISOString(),
+  });
   normalizeBudgets(state);
 }
 
@@ -614,6 +633,7 @@ function applyAction(state, event, data) {
     'auction:randomNominate': () => randomNominate(state),
     'auction:bid': () => placeBid(state, data.participantId, data.amount),
     'auction:sell': () => sellCurrent(state),
+    'auction:releasePlayer': () => releasePlayer(state, data),
     'auction:skip': () => skipCurrent(state),
     'auction:undoLastSale': () => undoLastSale(state),
     'fixtures:generate': () => generateFixtures(state),

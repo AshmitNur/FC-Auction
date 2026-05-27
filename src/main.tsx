@@ -361,7 +361,7 @@ function App() {
           />
         )}
         {active === 'Players' && <Players players={players} state={state} soldIds={soldIds} send={send} />}
-        {active === 'Squads' && <Squads players={players} state={state} />}
+        {active === 'Squads' && <Squads players={players} state={state} send={send} />}
         {active === 'Fixtures' && <Fixtures state={state} send={send} />}
         {active === 'Standings' && <Standings state={state} standings={standings} />}
         {active === 'Bracket' && <Bracket state={state} send={send} />}
@@ -576,6 +576,13 @@ function PlayerPortal({
                 <strong>{player.name}</strong>
                 <span>{player.position} / {player.club}</span>
                 <em>{formatCoins(purchase.purchasePrice)}</em>
+                <button
+                  className="release-button"
+                  onClick={() => send('auction:releasePlayer', { participantId: participant.id, purchaseId: purchase.id })}
+                  title={`Release ${player.name}`}
+                >
+                  <RotateCcw size={14} /> Release
+                </button>
               </div>
             ) : null;
           })}
@@ -800,7 +807,7 @@ function Players({ players, state, soldIds, send }: { players: Player[]; state: 
   );
 }
 
-function Squads({ players, state }: { players: Player[]; state: AppState }) {
+function Squads({ players, state, send }: { players: Player[]; state: AppState; send: (event: string, data?: unknown) => void }) {
   const byId = new Map(players.map((player) => [player.id, player]));
   return (
     <div className="squad-grid">
@@ -827,6 +834,13 @@ function Squads({ players, state }: { players: Player[]; state: AppState }) {
                     <strong>{player.name}</strong>
                     <span>{player.position} / {player.club}</span>
                     <em>{formatCoins(purchase.purchasePrice)}</em>
+                    <button
+                      className="release-button"
+                      onClick={() => send('auction:releasePlayer', { participantId: participant.id, purchaseId: purchase.id })}
+                      title={`Release ${player.name}`}
+                    >
+                      <RotateCcw size={14} /> Release
+                    </button>
                   </div>
                 ) : null;
               })}

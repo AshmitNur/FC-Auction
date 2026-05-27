@@ -354,11 +354,30 @@ function undoLastSale() {
   if (saleIndex === -1) throw new Error('No sale is available to undo.');
 
   const sale = state.auction.history[saleIndex];
-  const participant = participantById(sale.participantId);
   state.squads[sale.participantId] = (state.squads[sale.participantId] || []).filter(
     (purchase) => purchase.playerId !== sale.playerId,
   );
   state.auction.history.splice(saleIndex, 1);
+  normalizeBudgets();
+}
+
+function releasePlayer(payload) {
+  const participant = participantById(payload.participantId);
+  if (!participant) throw new Error('Participant not found.');
+
+  const squad = state.squads[participant.id] || [];
+  const purchase = squad.find((item) => item.id === payload.purchaseId || item.playerId === payload.playerId);
+  if (!purchase) throw new Error('Player purchase not found in this squad.');
+
+  state.squads[participant.id] = squad.filter((item) => item.id !== purchase.id);
+  state.auction.history.unshift({
+    id: id('release'),
+    type: 'release',
+    playerId: purchase.playerId,
+    participantId: participant.id,
+    amount: purchase.purchasePrice,
+    timestamp: new Date().toISOString(),
+  });
   normalizeBudgets();
 }
 
@@ -674,6 +693,7 @@ io.on('connection', (socket) => {
   socket.on('auction:randomNominate', wrap(randomNominate));
   socket.on('auction:bid', wrap(({ participantId, amount }) => placeBid(participantId, amount)));
   socket.on('auction:sell', wrap(sellCurrent));
+  socket.on('auction:releasePlayer', wrap(releasePlayer));
   socket.on('auction:skip', wrap(() => {
     if (state.auction.currentPlayerId && !state.auction.unsoldQueue.includes(state.auction.currentPlayerId)) {
       state.auction.unsoldQueue.push(state.auction.currentPlayerId);
