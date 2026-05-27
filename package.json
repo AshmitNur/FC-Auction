@@ -1,0 +1,36 @@
+{
+  "name": "fc-26-fixture-app",
+  "version": "1.0.0",
+  "description": "LAN tournament, fixture, and auction manager for EA Sports FC 26.",
+  "main": "server/index.js",
+  "scripts": {
+    "dev": "concurrently \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "node server/index.js",
+    "dev:client": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "start": "node server/index.js",
+    "scrape:players": "node scripts/scrape-ea-ratings.mjs",
+    "db:schema": "node scripts/apply-supabase-schema.mjs",
+    "seed:supabase": "node scripts/seed-supabase-players.mjs",
+    "test": "node scripts/smoke-test.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.106.2",
+    "@vitejs/plugin-react": "^6.0.2",
+    "concurrently": "^9.2.1",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "lucide-react": "^1.16.0",
+    "pg": "^8.21.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.14"
+  }
+}
