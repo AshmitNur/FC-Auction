@@ -68,6 +68,7 @@ function defaultState() {
       autoSkipNoBid: true,
       unsoldReauction: true,
     },
+    users: [],
     participants: defaultParticipants(),
     squads: {},
     auction: {
@@ -189,6 +190,7 @@ async function mutateState(event, data = {}) {
 }
 
 async function saveState(client, state) {
+  normalizeUsers(state);
   normalizeBudgets(state);
   state.updatedAt = new Date().toISOString();
   await client.query(
@@ -202,6 +204,7 @@ async function saveState(client, state) {
 }
 
 function payload(state) {
+  normalizeUsers(state);
   normalizeBudgets(state);
   return {
     state,
@@ -212,6 +215,88 @@ function payload(state) {
 
 function participantById(state, participantId) {
   return state.participants.find((participant) => participant.id === participantId);
+}
+
+function cleanName(name) {
+  return String(name || '').trim().replace(/\s+/g, ' ');
+}
+
+function normalizedName(name) {
+  return cleanName(name).toLowerCase();
+}
+
+function userIdFor(name) {
+  return `user_${crypto.createHash('sha1').update(normalizedName(name)).digest('hex').slice(0, 10)}`;
+}
+
+function normalizeUsers(state) {
+  state.users = Array.isArray(state.users) ? state.users : [];
+  return state;
+}
+
+function loginUser(state, data) {
+  normalizeUsers(state);
+  const name = cleanName(data.name);
+  if (!name) throw new Error('Name is required.');
+
+  const role = data.role === 'admin' ? 'admin' : 'player';
+  const existing = state.users.find((user) => normalizedName(user.name) === normalizedName(name));
+  if (existing) {
+    existing.lastSeenAt = new Date().toISOString();
+    return existing;
+  }
+
+  const user = {
+    id: userIdFor(name),
+    name,
+    role,
+    createdAt: new Date().toISOString(),
+    lastSeenAt: new Date().toISOString(),
+  };
+  state.users.push(user);
+  return user;
+}
+
+function actorFrom(state, data) {
+  normalizeUsers(state);
+  const actor = data.actor || {};
+  const user = state.users.find((item) =>
+    (actor.id && item.id === actor.id) ||
+    (actor.name && normalizedName(item.name) === normalizedName(actor.name)),
+  );
+  if (!user) throw new Error('Sign in required.');
+  return user;
+}
+
+function requireAdmin(state, data) {
+  const actor = actorFrom(state, data);
+  if (actor.role !== 'admin') throw new Error('Admin access required.');
+  return actor;
+}
+
+function requireSignedIn(state, data) {
+  return actorFrom(state, data);
+}
+
+function canActForParticipant(actor, participant) {
+  return actor.role === 'admin' || normalizedName(actor.name) === normalizedName(participant.name);
+}
+
+function updateUser(state, data) {
+  const actor = requireAdmin(state, data);
+  const user = state.users.find((item) => item.id === data.userId);
+  if (!user) throw new Error('User not found.');
+  user.role = data.role === 'admin' ? 'admin' : 'player';
+  user.name = cleanName(data.name || user.name);
+  user.id = userIdFor(user.name);
+  user.updatedAt = new Date().toISOString();
+  if (user.id === actor.id) data.actor.id = user.id;
+}
+
+function deleteUser(state, data) {
+  const actor = requireAdmin(state, data);
+  if (data.userId === actor.id) throw new Error('You cannot delete your own active admin user.');
+  state.users = state.users.filter((user) => user.id !== data.userId);
 }
 
 function normalizeBudgets(state) {
@@ -571,6 +656,7 @@ function updateFixtureResult(state, data) {
 }
 
 function updateParticipant(state, data) {
+  requireAdmin(state, data);
   const participant = participantById(state, data.id);
   if (!participant) throw new Error('Participant not found.');
   participant.name = data.name ?? participant.name;
@@ -579,6 +665,7 @@ function updateParticipant(state, data) {
 }
 
 function joinParticipant(state, data) {
+  const actor = requireSignedIn(state, data);
   const group = data.group === 'B' ? 'B' : 'A';
   const slot = Number(data.slot);
   if (!Number.isInteger(slot) || slot < 1 || slot > 6) {
@@ -592,6 +679,9 @@ function joinParticipant(state, data) {
   const name = String(data.name || '').trim();
   const teamName = String(data.teamName || '').trim();
   if (!name) throw new Error('Name is required to join the auction.');
+  if (actor.role !== 'admin' && normalizedName(name) !== normalizedName(actor.name)) {
+    throw new Error('Players can only join with their signed-in name.');
+  }
 
   participant.name = name;
   participant.teamName = teamName || `${name} FC`;
@@ -600,6 +690,7 @@ function joinParticipant(state, data) {
 }
 
 function updateSettings(state, data) {
+  requireAdmin(state, data);
   state.settings = { ...state.settings, ...data };
   const budget = Number(state.settings.auctionBudget);
   state.participants = state.participants.map((participant) => {
@@ -617,29 +708,70 @@ function skipCurrent(state) {
 
 function applyAction(state, event, data) {
   const actions = {
+    'user:login': () => loginUser(state, data),
+    'user:update': () => updateUser(state, data),
+    'user:delete': () => deleteUser(state, data),
     'participant:update': () => updateParticipant(state, data),
     'participant:join': () => joinParticipant(state, data),
     'settings:update': () => updateSettings(state, data),
     'auction:start': () => {
+      requireAdmin(state, data);
       state.auction.status = 'running';
       state.tournament.status = 'auction';
       if (state.auction.currentPlayerId) setDeadline(state);
     },
     'auction:pause': () => {
+      requireAdmin(state, data);
       state.auction.status = 'paused';
       state.auction.deadlineAt = null;
     },
-    'auction:nominate': () => nominatePlayer(state, data.playerId),
-    'auction:randomNominate': () => randomNominate(state),
-    'auction:bid': () => placeBid(state, data.participantId, data.amount),
-    'auction:sell': () => sellCurrent(state),
-    'auction:releasePlayer': () => releasePlayer(state, data),
-    'auction:skip': () => skipCurrent(state),
-    'auction:undoLastSale': () => undoLastSale(state),
-    'fixtures:generate': () => generateFixtures(state),
-    'fixtures:generateKnockout': () => generateKnockout(state),
-    'fixture:updateResult': () => updateFixtureResult(state, data),
-    'tournament:reset': () => Object.assign(state, defaultState()),
+    'auction:nominate': () => {
+      requireAdmin(state, data);
+      nominatePlayer(state, data.playerId);
+    },
+    'auction:randomNominate': () => {
+      requireAdmin(state, data);
+      randomNominate(state);
+    },
+    'auction:bid': () => {
+      const actor = requireSignedIn(state, data);
+      const participant = participantById(state, data.participantId);
+      if (!participant) throw new Error('Participant not found.');
+      if (!canActForParticipant(actor, participant)) throw new Error('Players can only bid for their own slot.');
+      placeBid(state, data.participantId, data.amount);
+    },
+    'auction:sell': () => {
+      requireAdmin(state, data);
+      sellCurrent(state);
+    },
+    'auction:releasePlayer': () => {
+      requireAdmin(state, data);
+      releasePlayer(state, data);
+    },
+    'auction:skip': () => {
+      requireAdmin(state, data);
+      skipCurrent(state);
+    },
+    'auction:undoLastSale': () => {
+      requireAdmin(state, data);
+      undoLastSale(state);
+    },
+    'fixtures:generate': () => {
+      requireAdmin(state, data);
+      generateFixtures(state);
+    },
+    'fixtures:generateKnockout': () => {
+      requireAdmin(state, data);
+      generateKnockout(state);
+    },
+    'fixture:updateResult': () => {
+      requireAdmin(state, data);
+      updateFixtureResult(state, data);
+    },
+    'tournament:reset': () => {
+      requireAdmin(state, data);
+      Object.assign(state, defaultState(), { users: state.users });
+    },
   };
 
   const action = actions[event];

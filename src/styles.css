@@ -151,6 +151,72 @@ th {
   font-weight: 700;
 }
 
+.auth-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.auth-card {
+  width: min(460px, 100%);
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  background:
+    linear-gradient(145deg, rgba(154, 243, 77, 0.1), rgba(73, 185, 208, 0.05)),
+    rgba(13, 16, 13, 0.88);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(18px);
+  padding: 26px;
+  display: grid;
+  gap: 16px;
+}
+
+.auth-card .boot-mark {
+  width: fit-content;
+  font-size: 26px;
+  padding: 16px 20px;
+}
+
+.auth-card h1 {
+  margin: 5px 0 0;
+  font-size: clamp(34px, 8vw, 54px);
+  line-height: 0.96;
+}
+
+.auth-card label {
+  display: grid;
+  gap: 7px;
+  color: var(--soft);
+  font-size: 13px;
+}
+
+.role-toggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(5, 7, 5, 0.34);
+  padding: 6px;
+}
+
+.role-toggle button {
+  border-color: transparent;
+  background: transparent;
+}
+
+.role-toggle button.active {
+  border-color: rgba(154, 243, 77, 0.46);
+  background: rgba(154, 243, 77, 0.14);
+  color: var(--lime);
+}
+
+.auth-error {
+  margin: 0;
+  color: #ffd5cf;
+}
+
 .app-shell {
   min-height: 100vh;
   display: grid;
@@ -587,6 +653,27 @@ th {
   color: var(--lime);
   font-size: 13px;
   text-align: right;
+}
+
+.access-panel {
+  grid-column: 1 / -1;
+}
+
+.user-editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 150px auto;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.035);
+  padding: 8px;
+}
+
+.user-editor strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .auction-grid {
@@ -1212,6 +1299,7 @@ tr.qualified td:first-child {
   }
 
   .participant-editor,
+  .user-editor,
   .player-feature {
     grid-template-columns: 1fr;
   }

@@ -1,5 +1,3 @@
-const { defaultState, mutateState, payload } = require('./_lib/runtime');
-
 module.exports = async function handler(request, response) {
   if (request.method !== 'POST') {
     response.setHeader('Allow', 'POST');
@@ -7,10 +5,5 @@ module.exports = async function handler(request, response) {
     return;
   }
 
-  try {
-    const state = await mutateState('tournament:reset', defaultState());
-    response.status(200).json(payload(state));
-  } catch (error) {
-    response.status(500).json({ error: error.message });
-  }
+  response.status(400).json({ error: 'Use /api/action with tournament:reset and an admin user.' });
 };

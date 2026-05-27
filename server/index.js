@@ -74,6 +74,7 @@ function defaultState() {
       autoSkipNoBid: true,
       unsoldReauction: true,
     },
+    users: [],
     participants: defaultParticipants(),
     squads: {},
     auction: {
@@ -166,6 +167,7 @@ async function persistRemoteState(nextState) {
 async function loadState() {
   const remoteState = await loadRemoteState();
   if (remoteState) {
+    normalizeUsers(remoteState);
     normalizeBudgets(remoteState);
     fs.mkdirSync(DATA_DIR, { recursive: true });
     fs.writeFileSync(STATE_FILE, `${JSON.stringify(remoteState, null, 2)}\n`);
@@ -177,10 +179,14 @@ async function loadState() {
     saveState(nextState);
     return nextState;
   }
-  return JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+  const localState = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+  normalizeUsers(localState);
+  normalizeBudgets(localState);
+  return localState;
 }
 
 function saveState(nextState = state) {
+  normalizeUsers(nextState);
   normalizeBudgets(nextState);
   nextState.updatedAt = new Date().toISOString();
   fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -195,6 +201,88 @@ let timer = null;
 
 function participantById(participantId) {
   return state.participants.find((participant) => participant.id === participantId);
+}
+
+function cleanName(name) {
+  return String(name || '').trim().replace(/\s+/g, ' ');
+}
+
+function normalizedName(name) {
+  return cleanName(name).toLowerCase();
+}
+
+function userIdFor(name) {
+  return `user_${crypto.createHash('sha1').update(normalizedName(name)).digest('hex').slice(0, 10)}`;
+}
+
+function normalizeUsers(nextState = state) {
+  nextState.users = Array.isArray(nextState.users) ? nextState.users : [];
+  return nextState;
+}
+
+function loginUser(payload) {
+  normalizeUsers();
+  const name = cleanName(payload.name);
+  if (!name) throw new Error('Name is required.');
+
+  const role = payload.role === 'admin' ? 'admin' : 'player';
+  const existing = state.users.find((user) => normalizedName(user.name) === normalizedName(name));
+  if (existing) {
+    existing.lastSeenAt = new Date().toISOString();
+    return existing;
+  }
+
+  const user = {
+    id: userIdFor(name),
+    name,
+    role,
+    createdAt: new Date().toISOString(),
+    lastSeenAt: new Date().toISOString(),
+  };
+  state.users.push(user);
+  return user;
+}
+
+function actorFrom(payload) {
+  normalizeUsers();
+  const actor = payload.actor || {};
+  const user = state.users.find((item) =>
+    (actor.id && item.id === actor.id) ||
+    (actor.name && normalizedName(item.name) === normalizedName(actor.name)),
+  );
+  if (!user) throw new Error('Sign in required.');
+  return user;
+}
+
+function requireAdmin(payload) {
+  const actor = actorFrom(payload);
+  if (actor.role !== 'admin') throw new Error('Admin access required.');
+  return actor;
+}
+
+function requireSignedIn(payload) {
+  return actorFrom(payload);
+}
+
+function canActForParticipant(actor, participant) {
+  return actor.role === 'admin' || normalizedName(actor.name) === normalizedName(participant.name);
+}
+
+function updateUser(payload) {
+  const actor = requireAdmin(payload);
+  const user = state.users.find((item) => item.id === payload.userId);
+  if (!user) throw new Error('User not found.');
+  user.role = payload.role === 'admin' ? 'admin' : 'player';
+  user.name = cleanName(payload.name || user.name);
+  user.id = userIdFor(user.name);
+  user.updatedAt = new Date().toISOString();
+  if (user.id === actor.id) payload.actor.id = user.id;
+}
+
+function deleteUser(payload) {
+  const actor = requireAdmin(payload);
+  if (payload.userId === actor.id) throw new Error('You cannot delete your own active admin user.');
+  state.users = state.users.filter((user) => user.id !== payload.userId);
 }
 
 function normalizeBudgets(nextState = state) {
@@ -217,6 +305,7 @@ function soldPlayerIds() {
 }
 
 function publicState() {
+  normalizeUsers();
   normalizeBudgets();
   return {
     state,
@@ -592,6 +681,7 @@ function updateFixtureResult(payload) {
 }
 
 function updateParticipant(payload) {
+  requireAdmin(payload);
   const participant = participantById(payload.id);
   if (!participant) throw new Error('Participant not found.');
   participant.name = payload.name ?? participant.name;
@@ -600,6 +690,7 @@ function updateParticipant(payload) {
 }
 
 function joinParticipant(payload) {
+  const actor = requireSignedIn(payload);
   const group = payload.group === 'B' ? 'B' : 'A';
   const slot = Number(payload.slot);
   if (!Number.isInteger(slot) || slot < 1 || slot > 6) {
@@ -613,6 +704,9 @@ function joinParticipant(payload) {
   const name = String(payload.name || '').trim();
   const teamName = String(payload.teamName || '').trim();
   if (!name) throw new Error('Name is required to join the auction.');
+  if (actor.role !== 'admin' && normalizedName(name) !== normalizedName(actor.name)) {
+    throw new Error('Players can only join with their signed-in name.');
+  }
 
   participant.name = name;
   participant.teamName = teamName || `${name} FC`;
@@ -621,6 +715,7 @@ function joinParticipant(payload) {
 }
 
 function updateSettings(payload) {
+  requireAdmin(payload);
   state.settings = { ...state.settings, ...payload };
   const budget = Number(state.settings.auctionBudget);
   state.participants = state.participants.map((participant) => {
@@ -630,7 +725,82 @@ function updateSettings(payload) {
 }
 
 function resetTournament() {
-  state = defaultState();
+  const users = state.users || [];
+  state = { ...defaultState(), users };
+}
+
+function applyAction(event, payload = {}) {
+  const actions = {
+    'user:login': () => loginUser(payload),
+    'user:update': () => updateUser(payload),
+    'user:delete': () => deleteUser(payload),
+    'participant:update': () => updateParticipant(payload),
+    'participant:join': () => joinParticipant(payload),
+    'settings:update': () => updateSettings(payload),
+    'auction:start': () => {
+      requireAdmin(payload);
+      state.auction.status = 'running';
+      state.tournament.status = 'auction';
+    },
+    'auction:pause': () => {
+      requireAdmin(payload);
+      state.auction.status = 'paused';
+    },
+    'auction:nominate': () => {
+      requireAdmin(payload);
+      nominatePlayer(payload.playerId);
+    },
+    'auction:randomNominate': () => {
+      requireAdmin(payload);
+      randomNominate();
+    },
+    'auction:bid': () => {
+      const actor = requireSignedIn(payload);
+      const participant = participantById(payload.participantId);
+      if (!participant) throw new Error('Participant not found.');
+      if (!canActForParticipant(actor, participant)) throw new Error('Players can only bid for their own slot.');
+      placeBid(payload.participantId, payload.amount);
+    },
+    'auction:sell': () => {
+      requireAdmin(payload);
+      sellCurrent();
+    },
+    'auction:releasePlayer': () => {
+      requireAdmin(payload);
+      releasePlayer(payload);
+    },
+    'auction:skip': () => {
+      requireAdmin(payload);
+      if (state.auction.currentPlayerId && !state.auction.unsoldQueue.includes(state.auction.currentPlayerId)) {
+        state.auction.unsoldQueue.push(state.auction.currentPlayerId);
+      }
+      clearCurrentAuction();
+    },
+    'auction:undoLastSale': () => {
+      requireAdmin(payload);
+      undoLastSale();
+    },
+    'fixtures:generate': () => {
+      requireAdmin(payload);
+      generateFixtures();
+    },
+    'fixtures:generateKnockout': () => {
+      requireAdmin(payload);
+      generateKnockout();
+    },
+    'fixture:updateResult': () => {
+      requireAdmin(payload);
+      updateFixtureResult(payload);
+    },
+    'tournament:reset': () => {
+      requireAdmin(payload);
+      resetTournament();
+    },
+  };
+
+  const action = actions[event];
+  if (!action) throw new Error(`Unsupported action: ${event}`);
+  action();
 }
 
 const app = express();
@@ -649,10 +819,18 @@ app.get('/api/storage', (_request, response) => response.json({
   playerTable: postgresStore || supabase ? SUPABASE_PLAYER_TABLE : null,
 }));
 app.get('/api/standings', (_request, response) => response.json({ A: tableFor('A'), B: tableFor('B') }));
+app.post('/api/action', (request, response) => {
+  try {
+    const { event, data = {} } = request.body || {};
+    applyAction(event, data);
+    emitState();
+    response.json(publicState());
+  } catch (actionError) {
+    response.status(400).json({ error: actionError.message });
+  }
+});
 app.post('/api/reset', (_request, response) => {
-  resetTournament();
-  emitState();
-  response.json(publicState());
+  response.status(400).json({ error: 'Use /api/action with tournament:reset and an admin user.' });
 });
 
 const distDir = path.join(ROOT, 'dist');
@@ -670,41 +848,34 @@ if (fs.existsSync(distDir)) {
 io.on('connection', (socket) => {
   socket.emit('state', publicState());
 
-  const wrap = (handler) => (payload = {}) => {
+  const wrap = (event) => (payload = {}) => {
     try {
-      handler(payload);
+      applyAction(event, payload);
       emitState();
     } catch (handlerError) {
       error(socket, handlerError.message);
     }
   };
 
-  socket.on('participant:update', wrap(updateParticipant));
-  socket.on('participant:join', wrap(joinParticipant));
-  socket.on('settings:update', wrap(updateSettings));
-  socket.on('auction:start', wrap(() => {
-    state.auction.status = 'running';
-    state.tournament.status = 'auction';
-  }));
-  socket.on('auction:pause', wrap(() => {
-    state.auction.status = 'paused';
-  }));
-  socket.on('auction:nominate', wrap(({ playerId }) => nominatePlayer(playerId)));
-  socket.on('auction:randomNominate', wrap(randomNominate));
-  socket.on('auction:bid', wrap(({ participantId, amount }) => placeBid(participantId, amount)));
-  socket.on('auction:sell', wrap(sellCurrent));
-  socket.on('auction:releasePlayer', wrap(releasePlayer));
-  socket.on('auction:skip', wrap(() => {
-    if (state.auction.currentPlayerId && !state.auction.unsoldQueue.includes(state.auction.currentPlayerId)) {
-      state.auction.unsoldQueue.push(state.auction.currentPlayerId);
-    }
-    clearCurrentAuction();
-  }));
-  socket.on('auction:undoLastSale', wrap(undoLastSale));
-  socket.on('fixtures:generate', wrap(generateFixtures));
-  socket.on('fixtures:generateKnockout', wrap(generateKnockout));
-  socket.on('fixture:updateResult', wrap(updateFixtureResult));
-  socket.on('tournament:reset', wrap(resetTournament));
+  socket.on('user:login', wrap('user:login'));
+  socket.on('user:update', wrap('user:update'));
+  socket.on('user:delete', wrap('user:delete'));
+  socket.on('participant:update', wrap('participant:update'));
+  socket.on('participant:join', wrap('participant:join'));
+  socket.on('settings:update', wrap('settings:update'));
+  socket.on('auction:start', wrap('auction:start'));
+  socket.on('auction:pause', wrap('auction:pause'));
+  socket.on('auction:nominate', wrap('auction:nominate'));
+  socket.on('auction:randomNominate', wrap('auction:randomNominate'));
+  socket.on('auction:bid', wrap('auction:bid'));
+  socket.on('auction:sell', wrap('auction:sell'));
+  socket.on('auction:releasePlayer', wrap('auction:releasePlayer'));
+  socket.on('auction:skip', wrap('auction:skip'));
+  socket.on('auction:undoLastSale', wrap('auction:undoLastSale'));
+  socket.on('fixtures:generate', wrap('fixtures:generate'));
+  socket.on('fixtures:generateKnockout', wrap('fixtures:generateKnockout'));
+  socket.on('fixture:updateResult', wrap('fixture:updateResult'));
+  socket.on('tournament:reset', wrap('tournament:reset'));
 });
 
 async function bootstrap() {
