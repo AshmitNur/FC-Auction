@@ -44,12 +44,15 @@ body {
   min-width: 320px;
   min-height: 100vh;
   background:
+    linear-gradient(180deg, rgba(4, 6, 5, 0.42), rgba(4, 6, 5, 0.78)),
+    radial-gradient(circle at 50% 42%, rgba(4, 6, 5, 0.08), rgba(4, 6, 5, 0.62) 62%),
+    url("./assets/auction-control-bg.png"),
     linear-gradient(90deg, rgba(224, 234, 216, 0.035) 1px, transparent 1px),
     linear-gradient(0deg, rgba(224, 234, 216, 0.028) 1px, transparent 1px),
-    radial-gradient(circle at 18% 0%, rgba(154, 243, 77, 0.12), transparent 32%),
-    radial-gradient(circle at 88% 10%, rgba(73, 185, 208, 0.11), transparent 30%),
     linear-gradient(180deg, #0d100d 0%, #090b0a 52%, #070807 100%);
-  background-size: 44px 44px, 44px 44px, auto, auto, auto;
+  background-size: auto, auto, cover, 44px 44px, 44px 44px, auto;
+  background-position: center, center, center top, center, center, center;
+  background-attachment: fixed;
   color: var(--ink);
   font-family: Cruyff, ui-sans-serif, system-ui, sans-serif;
   letter-spacing: 0;
@@ -1048,7 +1051,9 @@ tr.qualified td:first-child {
   }
 
   body {
-    background-size: 34px 34px, 34px 34px, auto, auto, auto;
+    background-size: auto, auto, cover, 34px 34px, 34px 34px, auto;
+    background-position: center, center, center top, center, center, center;
+    background-attachment: scroll;
   }
 
   button {
