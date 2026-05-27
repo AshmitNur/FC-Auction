@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { io, Socket } from 'socket.io-client';
 import {
@@ -190,24 +190,53 @@ function useTournament() {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    fetch(`${serverUrl}/api/state`)
-      .then((response) => response.json())
-      .then(setPayload)
-      .catch((requestError) => setError(requestError.message));
+  const fetchState = useCallback(async (silent = false) => {
+    try {
+      const response = await fetch(`${serverUrl}/api/state`);
+      const nextPayload = await response.json();
+      if (!response.ok) throw new Error(nextPayload.error || 'Unable to load tournament state.');
+      setPayload(nextPayload);
+      if (!silent) setError('');
+    } catch (requestError) {
+      if (!silent) setError(requestError instanceof Error ? requestError.message : 'Unable to load tournament state.');
+    }
+  }, []);
 
-    const nextSocket = io(serverUrl);
+  useEffect(() => {
+    fetchState();
+
+    const nextSocket = io(serverUrl, { timeout: 3000 });
     nextSocket.on('state', setPayload);
     nextSocket.on('action-error', ({ message }) => setError(message));
     setSocket(nextSocket);
+    const poll = window.setInterval(() => {
+      if (!nextSocket.connected) fetchState(true);
+    }, 1500);
     return () => {
+      window.clearInterval(poll);
       nextSocket.close();
     };
-  }, []);
+  }, [fetchState]);
 
-  function send(event: string, data: unknown = {}) {
+  async function send(event: string, data: unknown = {}) {
     setError('');
-    socket?.emit(event, data);
+    if (socket?.connected) {
+      socket.emit(event, data);
+      return;
+    }
+
+    try {
+      const response = await fetch(`${serverUrl}/api/action`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event, data }),
+      });
+      const nextPayload = await response.json();
+      if (!response.ok) throw new Error(nextPayload.error || 'Action failed.');
+      setPayload(nextPayload);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Action failed.');
+    }
   }
 
   return { payload, send, error, setError };
@@ -241,7 +270,7 @@ function App() {
     return (
       <main className="boot">
         <div className="boot-mark">FC26</div>
-        <p>Loading LAN control room</p>
+        <p>{error || 'Loading LAN control room'}</p>
       </main>
     );
   }
