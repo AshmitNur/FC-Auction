@@ -166,6 +166,7 @@ async function persistRemoteState(nextState) {
 async function loadState() {
   const remoteState = await loadRemoteState();
   if (remoteState) {
+    normalizeBudgets(remoteState);
     fs.mkdirSync(DATA_DIR, { recursive: true });
     fs.writeFileSync(STATE_FILE, `${JSON.stringify(remoteState, null, 2)}\n`);
     return remoteState;
@@ -180,6 +181,7 @@ async function loadState() {
 }
 
 function saveState(nextState = state) {
+  normalizeBudgets(nextState);
   nextState.updatedAt = new Date().toISOString();
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.writeFileSync(STATE_FILE, `${JSON.stringify(nextState, null, 2)}\n`);
@@ -195,11 +197,27 @@ function participantById(participantId) {
   return state.participants.find((participant) => participant.id === participantId);
 }
 
+function normalizeBudgets(nextState = state) {
+  const budget = Number(nextState.settings.auctionBudget);
+  nextState.participants = nextState.participants.map((participant) => {
+    const purchases = nextState.squads[participant.id] || [];
+    const spent = purchases.reduce((sum, purchase) => sum + Number(purchase.purchasePrice || 0), 0);
+    const startingBudget = Number.isFinite(participant.startingBudget) ? Number(participant.startingBudget) : budget;
+    return {
+      ...participant,
+      startingBudget,
+      remainingBudget: startingBudget - spent,
+    };
+  });
+  return nextState;
+}
+
 function soldPlayerIds() {
   return new Set(Object.values(state.squads).flat().map((purchase) => purchase.playerId));
 }
 
 function publicState() {
+  normalizeBudgets();
   return {
     state,
     playersMeta: playerPayload.meta,
@@ -242,6 +260,7 @@ function randomNominate() {
 }
 
 function validateBid(participantId, amount) {
+  normalizeBudgets();
   const participant = participantById(participantId);
   const playerId = state.auction.currentPlayerId;
   const numericAmount = Number(amount);
@@ -309,7 +328,6 @@ function sellCurrent() {
   const participant = participantById(state.auction.highestBidderId);
   if (!participant) throw new Error('Winning participant not found.');
 
-  participant.remainingBudget -= state.auction.currentBid;
   state.squads[participant.id] = state.squads[participant.id] || [];
   state.squads[participant.id].push({
     id: id('squad_player'),
@@ -327,6 +345,7 @@ function sellCurrent() {
     amount: state.auction.currentBid,
     timestamp: new Date().toISOString(),
   });
+  normalizeBudgets();
   clearCurrentAuction();
 }
 
@@ -336,11 +355,11 @@ function undoLastSale() {
 
   const sale = state.auction.history[saleIndex];
   const participant = participantById(sale.participantId);
-  if (participant) participant.remainingBudget += sale.amount;
   state.squads[sale.participantId] = (state.squads[sale.participantId] || []).filter(
     (purchase) => purchase.playerId !== sale.playerId,
   );
   state.auction.history.splice(saleIndex, 1);
+  normalizeBudgets();
 }
 
 function startTimer() {
