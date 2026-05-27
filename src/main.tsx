@@ -115,7 +115,7 @@ type Standing = {
 
 const serverUrl = import.meta.env.DEV ? `http://${window.location.hostname}:4000` : window.location.origin;
 const money = new Intl.NumberFormat('en-US');
-const compactMoney = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 });
+const compactMoney = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 2 });
 
 const nav = [
   ['Dashboard', LayoutDashboard],
