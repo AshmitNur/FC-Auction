@@ -606,8 +606,9 @@ th {
 }
 
 .player-bid-stage {
-  grid-row: span 3;
+  grid-row: span 2;
   display: grid;
+  align-content: start;
   gap: 18px;
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -646,6 +647,13 @@ th {
   display: grid;
   grid-template-columns: minmax(150px, 1fr) auto auto auto;
   gap: 10px;
+  align-items: center;
+}
+
+.player-bid-controls input,
+.player-bid-controls button {
+  height: 56px;
+  min-height: 56px;
 }
 
 .form-grid {
@@ -884,6 +892,14 @@ th {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
+  align-items: stretch;
+}
+
+.budget-overview .budget-list {
+  max-height: 330px;
+  overflow: auto;
+  padding-right: 4px;
+  scrollbar-width: thin;
 }
 
 .empty-stage {

@@ -695,6 +695,11 @@ function PlayerPortal({
         </div>
       </section>
 
+      <section className="panel budget-overview">
+        <div className="section-title"><span>All Players</span><h2>Remaining Currency</h2></div>
+        <BudgetList participants={state.participants} currentParticipantId={participant.id} />
+      </section>
+
       <section className="panel">
         <div className="section-title"><span>My Squad</span><h2>{squad.length}/{state.settings.squadSize}</h2></div>
         <div className="squad-list">
@@ -717,11 +722,6 @@ function PlayerPortal({
           })}
           {!squad.length && <p className="empty">Your bought players will appear here after the admin sells a player to you.</p>}
         </div>
-      </section>
-
-      <section className="panel">
-        <div className="section-title"><span>All Players</span><h2>Remaining Budgets</h2></div>
-        <BudgetList participants={state.participants} currentParticipantId={participant.id} />
       </section>
 
       <section className="panel">
