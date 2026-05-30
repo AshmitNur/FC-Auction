@@ -145,6 +145,11 @@ function participantSlot(participant: Participant) {
   return Number(participant.id.match(/\d+$/)?.[0] || 0);
 }
 
+function participantGroupSlot(participant: Participant) {
+  const rawSlot = participantSlot(participant);
+  return participant.group === 'B' ? rawSlot - 6 : rawSlot;
+}
+
 function sortParticipantsByGroup(participants: Participant[]) {
   return [...participants].sort((a, b) => a.group.localeCompare(b.group) || participantSlot(a) - participantSlot(b) || a.teamName.localeCompare(b.teamName));
 }
@@ -628,7 +633,11 @@ function PlayerPortal({
   canManage: boolean;
   authUser: AppUser;
 }) {
-  const participant = session ? state.participants.find((item) => item.id === session.participantId) : null;
+  const sessionParticipant = session ? state.participants.find((item) => item.id === session.participantId) : null;
+  const assignedParticipant = state.participants.find((item) => normalizedName(item.name) === normalizedName(authUser.name)) || null;
+  const participant = canManage
+    ? sessionParticipant || assignedParticipant
+    : assignedParticipant;
   const [name, setName] = useState(session?.name || authUser.name);
   const [teamName, setTeamName] = useState(session?.teamName || '');
   const [group, setGroup] = useState<'A' | 'B'>(session?.group || 'A');
@@ -637,6 +646,23 @@ function PlayerPortal({
   const [amount, setAmount] = useState(nextBid);
 
   useEffect(() => setAmount(nextBid), [nextBid]);
+  useEffect(() => {
+    if (!participant) return;
+    const assignedSession = {
+      participantId: participant.id,
+      name: participant.name,
+      teamName: participant.teamName,
+      group: participant.group,
+      slot: participantGroupSlot(participant),
+    };
+    const alreadySaved =
+      session?.participantId === assignedSession.participantId &&
+      session.name === assignedSession.name &&
+      session.teamName === assignedSession.teamName &&
+      session.group === assignedSession.group &&
+      session.slot === assignedSession.slot;
+    if (!alreadySaved) saveSession(assignedSession);
+  }, [participant?.id, participant?.name, participant?.teamName, participant?.group, session?.participantId, session?.name, session?.teamName, session?.group, session?.slot, saveSession]);
 
   const squad = participant ? state.squads[participant.id] || [] : [];
   const byId = new Map(players.map((player) => [player.id, player]));
@@ -690,7 +716,7 @@ function PlayerPortal({
           <div>
             <span>Signed in as</span>
             <h2>{participant.teamName}</h2>
-            <p>{participant.name} / Group {participant.group} / Slot {session?.slot}</p>
+            <p>{participant.name} / Group {participant.group} / Slot {participantGroupSlot(participant)}</p>
           </div>
           <button onClick={() => saveSession(null)}>Change player</button>
         </div>
