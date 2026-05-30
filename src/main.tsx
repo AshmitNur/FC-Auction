@@ -131,7 +131,7 @@ const nav = [
 ] as const;
 
 type NavItem = (typeof nav)[number][0];
-const playerNav: NavItem[] = ['Player', 'Squads', 'Fixtures', 'Standings', 'Bracket', 'Viewer'];
+const playerNav: NavItem[] = ['Player', 'Players', 'Squads', 'Fixtures', 'Standings', 'Bracket', 'Viewer'];
 
 function formatCoins(value: number) {
   return `${compactMoney.format(value)} coins`;
@@ -514,7 +514,7 @@ function App() {
             send={send}
           />
         )}
-        {active === 'Players' && isAdmin && <Players players={players} state={state} soldIds={soldIds} send={send} />}
+        {active === 'Players' && <Players players={players} state={state} soldIds={soldIds} send={send} canManage={isAdmin} />}
         {active === 'Squads' && <Squads players={players} state={state} send={send} canManage={isAdmin} />}
         {active === 'Fixtures' && <Fixtures state={state} send={send} canManage={isAdmin} />}
         {active === 'Standings' && <Standings state={state} standings={standings} />}
@@ -972,7 +972,19 @@ function PlayerFeature({ player }: { player: Player }) {
   );
 }
 
-function Players({ players, state, soldIds, send }: { players: Player[]; state: AppState; soldIds: Set<string>; send: (event: string, data?: unknown) => void }) {
+function Players({
+  players,
+  state,
+  soldIds,
+  send,
+  canManage,
+}: {
+  players: Player[];
+  state: AppState;
+  soldIds: Set<string>;
+  send: (event: string, data?: unknown) => void;
+  canManage: boolean;
+}) {
   const [query, setQuery] = useState('');
   const [position, setPosition] = useState('All');
   const positions = useMemo(() => ['All', ...Array.from(new Set(players.map((player) => player.position))).sort()], [players]);
@@ -989,17 +1001,30 @@ function Players({ players, state, soldIds, send }: { players: Player[]; state: 
         <Pill>{filtered.length} visible</Pill>
       </div>
       <div className="player-table">
-        {filtered.slice(0, 220).map((player) => (
-          <button key={player.id} className={`database-row ${soldIds.has(player.id) ? 'sold' : ''}`} onClick={() => send('auction:nominate', { playerId: player.id })}>
-            <img src={player.avatarUrl} alt="" />
-            <strong>{player.name}</strong>
-            <span>{player.position}</span>
-            <span>{player.club}</span>
-            <span>{player.nation}</span>
-            <em>{player.overallRating}</em>
-            <small>{soldIds.has(player.id) ? 'Sold' : 'Available'}</small>
-          </button>
-        ))}
+        {filtered.map((player) => {
+          const rowClassName = `database-row ${soldIds.has(player.id) ? 'sold' : ''} ${canManage ? '' : 'readonly'}`;
+          const rowContents = (
+            <>
+              <img src={player.avatarUrl} alt="" />
+              <strong>{player.name}</strong>
+              <span>{player.position}</span>
+              <span>{player.club}</span>
+              <span>{player.nation}</span>
+              <em>{player.overallRating}</em>
+              <small>{soldIds.has(player.id) ? 'Sold' : 'Available'}</small>
+            </>
+          );
+
+          return canManage ? (
+            <button key={player.id} className={rowClassName} onClick={() => send('auction:nominate', { playerId: player.id })}>
+              {rowContents}
+            </button>
+          ) : (
+            <div key={player.id} className={rowClassName}>
+              {rowContents}
+            </div>
+          );
+        })}
       </div>
     </section>
   );

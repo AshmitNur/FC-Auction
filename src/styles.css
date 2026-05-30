@@ -991,11 +991,16 @@ th {
 .database-row {
   width: 100%;
   min-height: 60px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
   display: grid;
   grid-template-columns: 48px minmax(160px, 1.2fr) 64px minmax(140px, 1fr) minmax(110px, 0.8fr) 54px 88px;
+  gap: 8px;
   align-items: center;
   text-align: left;
   background: rgba(255, 255, 255, 0.035);
+  color: var(--ink);
+  padding: 0 13px;
 }
 
 .database-row img {
@@ -1020,6 +1025,10 @@ th {
 
 .database-row.sold {
   opacity: 0.48;
+}
+
+.database-row.readonly {
+  cursor: default;
 }
 
 .squad-grid {
