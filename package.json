@@ -7,7 +7,7 @@
     "dev": "concurrently \"npm:dev:server\" \"npm:dev:client\"",
     "dev:server": "node server/index.js",
     "dev:client": "vite --host 0.0.0.0",
-    "build": "vite build",
+    "build": "tsc --noEmit && vite build",
     "start": "node server/index.js",
     "scrape:players": "node scripts/scrape-ea-ratings.mjs",
     "db:schema": "node scripts/apply-supabase-schema.mjs",
@@ -32,5 +32,9 @@
     "socket.io-client": "^4.8.3",
     "typescript": "^6.0.3",
     "vite": "^8.0.14"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.15",
+    "@types/react-dom": "^19.2.3"
   }
 }

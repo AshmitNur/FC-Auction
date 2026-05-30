@@ -137,6 +137,10 @@ function formatCoins(value: number) {
   return `${compactMoney.format(value)} coins`;
 }
 
+function normalizedName(value: string) {
+  return value.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
 function participantSlot(participant: Participant) {
   return Number(participant.id.match(/\d+$/)?.[0] || 0);
 }
