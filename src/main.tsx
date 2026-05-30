@@ -834,16 +834,22 @@ function NumberInput({ label, value, onCommit }: { label: string; value: number;
 
 function ParticipantEditor({ participant, send }: { participant: Participant; send: (event: string, data?: unknown) => void }) {
   const [draft, setDraft] = useState(participant);
-  useEffect(() => setDraft(participant), [participant]);
   const isDirty = draft.name !== participant.name || draft.teamName !== participant.teamName || draft.group !== participant.group;
+
+  useEffect(() => {
+    if (!isDirty) setDraft(participant);
+  }, [participant.id, participant.name, participant.teamName, participant.group, participant.remainingBudget, isDirty]);
+
   function commit(nextDraft = draft) {
+    const hasChanges = nextDraft.name !== participant.name || nextDraft.teamName !== participant.teamName || nextDraft.group !== participant.group;
+    if (!hasChanges) return;
     send('participant:update', nextDraft);
   }
   return (
     <div className="participant-editor">
       <input
         value={draft.name}
-        onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+        onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
         onBlur={() => commit()}
         onKeyDown={(event) => {
           if (event.key === 'Enter') commit();
@@ -851,7 +857,7 @@ function ParticipantEditor({ participant, send }: { participant: Participant; se
       />
       <input
         value={draft.teamName}
-        onChange={(event) => setDraft({ ...draft, teamName: event.target.value })}
+        onChange={(event) => setDraft((current) => ({ ...current, teamName: event.target.value }))}
         onBlur={() => commit()}
         onKeyDown={(event) => {
           if (event.key === 'Enter') commit();
@@ -866,7 +872,7 @@ function ParticipantEditor({ participant, send }: { participant: Participant; se
         <option value="B">B</option>
       </select>
       <strong>{formatCoins(participant.remainingBudget)}</strong>
-      <button type="button" disabled={!isDirty} onClick={() => commit()}>Save</button>
+      <button type="button" disabled={!isDirty} onMouseDown={(event) => event.preventDefault()} onClick={() => commit()}>Save</button>
     </div>
   );
 }
