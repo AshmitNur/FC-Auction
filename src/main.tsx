@@ -1160,6 +1160,20 @@ function StandingTable({ group, rows, state }: { group: 'A' | 'B'; rows: Standin
   );
 }
 
+function bracketPathLabel(fixtureId: string) {
+  const labels: Record<string, string> = {
+    qf1: 'A1 vs B4',
+    qf2: 'B2 vs A3',
+    qf3: 'B1 vs A4',
+    qf4: 'A2 vs B3',
+    sf1: 'Winner QF1 vs Winner QF2',
+    sf2: 'Winner QF3 vs Winner QF4',
+    final: 'Winner SF1 vs Winner SF2',
+    third: 'Loser SF1 vs Loser SF2',
+  };
+  return labels[fixtureId] || fixtureId.toUpperCase();
+}
+
 function Bracket({ state, send, canManage }: { state: AppState; send: (event: string, data?: unknown) => void; canManage: boolean }) {
   const rounds = ['Quarter-final', 'Semi-final', 'Final', 'Third-place'];
   const fixturesByRound = rounds.map((round) => state.fixtures.filter((fixture) => fixture.stage === 'knockout' && fixture.round === round));
@@ -1174,6 +1188,7 @@ function Bracket({ state, send, canManage }: { state: AppState; send: (event: st
             <h3>{rounds[index]}</h3>
             {fixtures.map((fixture) => (
               <div className="bracket-match" key={fixture.id}>
+                <small>{bracketPathLabel(fixture.id)}</small>
                 <span className={fixture.winnerId === fixture.playerAId ? 'winner' : ''}>{nameFor(state.participants, fixture.playerAId)}</span>
                 <span className={fixture.winnerId === fixture.playerBId ? 'winner' : ''}>{nameFor(state.participants, fixture.playerBId)}</span>
                 <em>{fixture.status === 'completed' ? `${fixture.playerAScore}-${fixture.playerBScore}` : 'pending'}</em>

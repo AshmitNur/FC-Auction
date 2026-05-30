@@ -1111,13 +1111,18 @@ tr.qualified td:first-child {
 }
 
 .bracket-match {
-  min-height: 104px;
+  min-height: 124px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.035);
   display: grid;
   gap: 8px;
   padding: 12px;
+}
+
+.bracket-match small {
+  color: var(--soft);
+  font-size: 12px;
 }
 
 .bracket-match span {

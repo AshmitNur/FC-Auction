@@ -596,6 +596,7 @@ function tableFor(group) {
 }
 
 function generateKnockout() {
+  requireCompletedGroupFixtures();
   const a = tableFor('A');
   const b = tableFor('B');
   if (a.length < 4 || b.length < 4) throw new Error('Both groups need four ranked teams.');
@@ -603,9 +604,9 @@ function generateKnockout() {
   const existingGroups = state.fixtures.filter((fixture) => fixture.stage === 'group');
   const bracket = [
     ['qf1', 'Quarter-final', a[0].participantId, b[3].participantId],
-    ['qf2', 'Quarter-final', b[0].participantId, a[3].participantId],
-    ['qf3', 'Quarter-final', a[1].participantId, b[2].participantId],
-    ['qf4', 'Quarter-final', b[1].participantId, a[2].participantId],
+    ['qf2', 'Quarter-final', b[1].participantId, a[2].participantId],
+    ['qf3', 'Quarter-final', b[0].participantId, a[3].participantId],
+    ['qf4', 'Quarter-final', a[1].participantId, b[2].participantId],
     ['sf1', 'Semi-final', null, null],
     ['sf2', 'Semi-final', null, null],
     ['final', 'Final', null, null],
@@ -630,6 +631,15 @@ function generateKnockout() {
   ];
 }
 
+function requireCompletedGroupFixtures() {
+  for (const group of ['A', 'B']) {
+    const fixtures = state.fixtures.filter((fixture) => fixture.stage === 'group' && fixture.group === group);
+    if (!fixtures.length || fixtures.some((fixture) => fixture.status !== 'completed')) {
+      throw new Error(`Complete all Group ${group} fixtures before building the bracket.`);
+    }
+  }
+}
+
 function fixtureWinner(fixture) {
   if (!fixture || fixture.status !== 'completed') return null;
   return fixture.winnerId || (fixture.playerAScore > fixture.playerBScore ? fixture.playerAId : fixture.playerBId);
@@ -645,10 +655,10 @@ function progressBracket() {
   const byId = new Map(state.fixtures.map((fixture) => [fixture.id, fixture]));
   if (byId.has('sf1')) {
     byId.get('sf1').playerAId = fixtureWinner(byId.get('qf1'));
-    byId.get('sf1').playerBId = fixtureWinner(byId.get('qf3'));
+    byId.get('sf1').playerBId = fixtureWinner(byId.get('qf2'));
   }
   if (byId.has('sf2')) {
-    byId.get('sf2').playerAId = fixtureWinner(byId.get('qf2'));
+    byId.get('sf2').playerAId = fixtureWinner(byId.get('qf3'));
     byId.get('sf2').playerBId = fixtureWinner(byId.get('qf4'));
   }
   if (byId.has('final')) {

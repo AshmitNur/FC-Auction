@@ -567,10 +567,40 @@ function tableFor(state, group) {
     b.GD = b.GF - b.GA;
   }
 
-  return rows.sort((a, b) => b.Pts - a.Pts || b.GD - a.GD || b.GF - a.GF || a.GA - b.GA);
+  return rows.sort((a, b) => {
+    if (b.Pts !== a.Pts) return b.Pts - a.Pts;
+    if (b.GD !== a.GD) return b.GD - a.GD;
+    if (b.GF !== a.GF) return b.GF - a.GF;
+    if (a.Pts === b.Pts) {
+      const h2h = state.fixtures.find(
+        (fixture) =>
+          fixture.stage === 'group' &&
+          fixture.status === 'completed' &&
+          ((fixture.playerAId === a.participantId && fixture.playerBId === b.participantId) ||
+            (fixture.playerAId === b.participantId && fixture.playerBId === a.participantId)),
+      );
+      if (h2h && h2h.playerAScore !== h2h.playerBScore) {
+        const winner = h2h.playerAScore > h2h.playerBScore ? h2h.playerAId : h2h.playerBId;
+        if (winner === a.participantId) return -1;
+        if (winner === b.participantId) return 1;
+      }
+    }
+    if (a.GA !== b.GA) return a.GA - b.GA;
+    return a.participantId.localeCompare(b.participantId);
+  });
+}
+
+function requireCompletedGroupFixtures(state) {
+  for (const group of ['A', 'B']) {
+    const fixtures = state.fixtures.filter((fixture) => fixture.stage === 'group' && fixture.group === group);
+    if (!fixtures.length || fixtures.some((fixture) => fixture.status !== 'completed')) {
+      throw new Error(`Complete all Group ${group} fixtures before building the bracket.`);
+    }
+  }
 }
 
 function generateKnockout(state) {
+  requireCompletedGroupFixtures(state);
   const a = tableFor(state, 'A');
   const b = tableFor(state, 'B');
   if (a.length < 4 || b.length < 4) throw new Error('Both groups need four ranked teams.');
@@ -578,9 +608,9 @@ function generateKnockout(state) {
   const existingGroups = state.fixtures.filter((fixture) => fixture.stage === 'group');
   const bracket = [
     ['qf1', 'Quarter-final', a[0].participantId, b[3].participantId],
-    ['qf2', 'Quarter-final', b[0].participantId, a[3].participantId],
-    ['qf3', 'Quarter-final', a[1].participantId, b[2].participantId],
-    ['qf4', 'Quarter-final', b[1].participantId, a[2].participantId],
+    ['qf2', 'Quarter-final', b[1].participantId, a[2].participantId],
+    ['qf3', 'Quarter-final', b[0].participantId, a[3].participantId],
+    ['qf4', 'Quarter-final', a[1].participantId, b[2].participantId],
     ['sf1', 'Semi-final', null, null],
     ['sf2', 'Semi-final', null, null],
     ['final', 'Final', null, null],
@@ -620,10 +650,10 @@ function progressBracket(state) {
   const byId = new Map(state.fixtures.map((fixture) => [fixture.id, fixture]));
   if (byId.has('sf1')) {
     byId.get('sf1').playerAId = fixtureWinner(byId.get('qf1'));
-    byId.get('sf1').playerBId = fixtureWinner(byId.get('qf3'));
+    byId.get('sf1').playerBId = fixtureWinner(byId.get('qf2'));
   }
   if (byId.has('sf2')) {
-    byId.get('sf2').playerAId = fixtureWinner(byId.get('qf2'));
+    byId.get('sf2').playerAId = fixtureWinner(byId.get('qf3'));
     byId.get('sf2').playerBId = fixtureWinner(byId.get('qf4'));
   }
   if (byId.has('final')) {
