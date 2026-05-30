@@ -381,6 +381,25 @@ function App() {
     }
   }, [authUser, active, visibleNav]);
 
+  useEffect(() => {
+    if (!payload || !authUser) return;
+    const userExists = payload.state.users.some((user) =>
+      user.id === authUser.id || normalizedName(user.name) === normalizedName(authUser.name),
+    );
+    if (userExists) return;
+
+    let cancelled = false;
+    login(authUser.name, authUser.role).then((user) => {
+      if (!user || cancelled) return;
+      setAuthUser(user);
+      localStorage.setItem('fc26-auth-user', JSON.stringify(user));
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [payload?.state.updatedAt, authUser?.id, authUser?.name, authUser?.role]);
+
   if (!payload) {
     return (
       <main className="boot">
@@ -788,15 +807,21 @@ function Setup({ state, send }: { state: AppState; send: (event: string, data?: 
 function NumberInput({ label, value, onCommit }: { label: string; value: number; onCommit: (value: number) => void }) {
   const [draft, setDraft] = useState(String(value));
   useEffect(() => setDraft(String(value)), [value]);
+  function commit() {
+    const nextValue = Number(draft);
+    if (Number.isFinite(nextValue)) onCommit(nextValue);
+  }
   return (
     <label>
       <span>{label}</span>
       <input
+        type="number"
+        inputMode="numeric"
         value={draft}
         onChange={(event) => setDraft(event.target.value)}
-        onBlur={() => onCommit(Number(draft))}
+        onBlur={commit}
         onKeyDown={(event) => {
-          if (event.key === 'Enter') onCommit(Number(draft));
+          if (event.key === 'Enter') commit();
         }}
       />
     </label>
@@ -806,19 +831,38 @@ function NumberInput({ label, value, onCommit }: { label: string; value: number;
 function ParticipantEditor({ participant, send }: { participant: Participant; send: (event: string, data?: unknown) => void }) {
   const [draft, setDraft] = useState(participant);
   useEffect(() => setDraft(participant), [participant]);
+  const isDirty = draft.name !== participant.name || draft.teamName !== participant.teamName || draft.group !== participant.group;
+  function commit(nextDraft = draft) {
+    send('participant:update', nextDraft);
+  }
   return (
     <div className="participant-editor">
-      <input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} onBlur={() => send('participant:update', draft)} />
-      <input value={draft.teamName} onChange={(event) => setDraft({ ...draft, teamName: event.target.value })} onBlur={() => send('participant:update', draft)} />
+      <input
+        value={draft.name}
+        onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+        onBlur={() => commit()}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') commit();
+        }}
+      />
+      <input
+        value={draft.teamName}
+        onChange={(event) => setDraft({ ...draft, teamName: event.target.value })}
+        onBlur={() => commit()}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') commit();
+        }}
+      />
       <select value={draft.group} onChange={(event) => {
         const next = { ...draft, group: event.target.value as 'A' | 'B' };
         setDraft(next);
-        send('participant:update', next);
+        commit(next);
       }}>
         <option value="A">A</option>
         <option value="B">B</option>
       </select>
       <strong>{formatCoins(participant.remainingBudget)}</strong>
+      <button type="button" disabled={!isDirty} onClick={() => commit()}>Save</button>
     </div>
   );
 }

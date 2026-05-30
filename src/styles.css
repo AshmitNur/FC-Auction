@@ -684,7 +684,7 @@ th {
 
 .participant-editor {
   display: grid;
-  grid-template-columns: 1fr 1fr 72px 150px;
+  grid-template-columns: minmax(150px, 1fr) minmax(150px, 1fr) 72px 118px 74px;
   gap: 8px;
   align-items: center;
   border: 1px solid transparent;
@@ -701,6 +701,11 @@ th {
   color: var(--lime);
   font-size: 13px;
   text-align: right;
+}
+
+.participant-editor button {
+  min-height: 40px;
+  padding: 0 10px;
 }
 
 .access-panel {
