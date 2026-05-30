@@ -1125,15 +1125,27 @@ function Fixtures({ state, send, canManage }: { state: AppState; send: (event: s
 }
 
 function FixtureEditor({ fixture, state, send, canManage }: { fixture: Fixture; state: AppState; send: (event: string, data?: unknown) => void; canManage: boolean }) {
-  const [a, setA] = useState(fixture.playerAScore ?? 0);
-  const [b, setB] = useState(fixture.playerBScore ?? 0);
+  const [a, setA] = useState(String(fixture.playerAScore ?? 0));
+  const [b, setB] = useState(String(fixture.playerBScore ?? 0));
   const [winner, setWinner] = useState(fixture.winnerId || fixture.playerAId || '');
+  const savedA = String(fixture.playerAScore ?? 0);
+  const savedB = String(fixture.playerBScore ?? 0);
+  const savedWinner = fixture.winnerId || fixture.playerAId || '';
+  const isDirty = a !== savedA || b !== savedB || winner !== savedWinner;
   useEffect(() => {
-    setA(fixture.playerAScore ?? 0);
-    setB(fixture.playerBScore ?? 0);
-    setWinner(fixture.winnerId || fixture.playerAId || '');
-  }, [fixture]);
-  const needsWinner = fixture.stage === 'knockout' && a === b;
+    if (isDirty) return;
+    setA(savedA);
+    setB(savedB);
+    setWinner(savedWinner);
+  }, [fixture.id, savedA, savedB, savedWinner, isDirty]);
+  const aScore = Number(a);
+  const bScore = Number(b);
+  const scoresAreValid = Number.isInteger(aScore) && Number.isInteger(bScore) && aScore >= 0 && bScore >= 0;
+  const needsWinner = fixture.stage === 'knockout' && scoresAreValid && aScore === bScore;
+  function saveScore() {
+    if (!scoresAreValid) return;
+    send('fixture:updateResult', { fixtureId: fixture.id, playerAScore: aScore, playerBScore: bScore, winnerId: needsWinner ? winner : null });
+  }
   if (!canManage) {
     return (
       <div className={`fixture-row ${fixture.status}`}>
@@ -1147,14 +1159,14 @@ function FixtureEditor({ fixture, state, send, canManage }: { fixture: Fixture; 
     <div className={`fixture-row ${fixture.status}`}>
       <span>{fixture.round}</span>
       <strong>{nameFor(state.participants, fixture.playerAId)} vs {nameFor(state.participants, fixture.playerBId)}</strong>
-      <input type="number" min="0" value={a} onChange={(event) => setA(Number(event.target.value))} />
-      <input type="number" min="0" value={b} onChange={(event) => setB(Number(event.target.value))} />
+      <input type="number" min="0" value={a} onChange={(event) => setA(event.target.value)} />
+      <input type="number" min="0" value={b} onChange={(event) => setB(event.target.value)} />
       {needsWinner && (
         <select value={winner} onChange={(event) => setWinner(event.target.value)}>
           {[fixture.playerAId, fixture.playerBId].filter(Boolean).map((idValue) => <option key={idValue || ''} value={idValue || ''}>{nameFor(state.participants, idValue)}</option>)}
         </select>
       )}
-      <button onClick={() => send('fixture:updateResult', { fixtureId: fixture.id, playerAScore: a, playerBScore: b, winnerId: needsWinner ? winner : null })}>Save</button>
+      <button disabled={!scoresAreValid} onClick={saveScore}>Save</button>
     </div>
   );
 }
