@@ -359,11 +359,19 @@ function randomNominate(state) {
   nominatePlayer(state, pool[Math.floor(Math.random() * pool.length)].id);
 }
 
-function validateBid(state, participantId, amount) {
+function nextValidBid(state) {
+  return state.auction.currentBid ? state.auction.currentBid + state.settings.bidIncrement : state.settings.minimumBid;
+}
+
+function bidAmountFor(state, amount, autoNext) {
+  return autoNext ? nextValidBid(state) : Number(amount);
+}
+
+function validateBid(state, participantId, amount, autoNext = false) {
   normalizeBudgets(state);
   const participant = participantById(state, participantId);
   const playerId = state.auction.currentPlayerId;
-  const numericAmount = Number(amount);
+  const numericAmount = bidAmountFor(state, amount, autoNext);
 
   if (!participant) return 'Participant not found.';
   if (!playerId) return 'No player is currently nominated.';
@@ -380,17 +388,18 @@ function validateBid(state, participantId, amount) {
   return null;
 }
 
-function placeBid(state, participantId, amount) {
-  const message = validateBid(state, participantId, amount);
+function placeBid(state, participantId, amount, autoNext = false) {
+  const bidAmount = bidAmountFor(state, amount, autoNext);
+  const message = validateBid(state, participantId, bidAmount, false);
   if (message) throw new Error(message);
 
-  state.auction.currentBid = Number(amount);
+  state.auction.currentBid = bidAmount;
   state.auction.highestBidderId = participantId;
   state.auction.bidLog.unshift({
     id: id('bid'),
     playerId: state.auction.currentPlayerId,
     participantId,
-    bidAmount: Number(amount),
+    bidAmount,
     timestamp: new Date().toISOString(),
   });
 
@@ -768,7 +777,7 @@ function applyAction(state, event, data) {
       const participant = participantById(state, data.participantId);
       if (!participant) throw new Error('Participant not found.');
       if (!canActForParticipant(actor, participant)) throw new Error('Players can only bid for their own slot.');
-      placeBid(state, data.participantId, data.amount);
+      placeBid(state, data.participantId, data.amount, data.autoNext === true);
     },
     'auction:sell': () => {
       requireAdmin(state, data);

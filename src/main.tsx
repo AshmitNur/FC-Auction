@@ -212,6 +212,7 @@ function useTournament(authUser: AppUser | null) {
   const [payload, setPayload] = useState<Payload | null>(null);
   const [socket, setSocket] = useState<Socket | null>(null);
   const [error, setError] = useState('');
+  const useSocketTransport = import.meta.env.DEV;
 
   const fetchState = useCallback(async (silent = false) => {
     try {
@@ -228,18 +229,18 @@ function useTournament(authUser: AppUser | null) {
   useEffect(() => {
     fetchState();
 
-    const nextSocket = io(serverUrl, { timeout: 3000 });
-    nextSocket.on('state', setPayload);
-    nextSocket.on('action-error', ({ message }) => setError(message));
-    setSocket(nextSocket);
+    const nextSocket = useSocketTransport ? io(serverUrl, { timeout: 3000 }) : null;
+    nextSocket?.on('state', setPayload);
+    nextSocket?.on('action-error', ({ message }) => setError(message));
+    if (nextSocket) setSocket(nextSocket);
     const poll = window.setInterval(() => {
-      if (!nextSocket.connected) fetchState(true);
-    }, 1500);
+      fetchState(true);
+    }, useSocketTransport ? 1500 : 800);
     return () => {
       window.clearInterval(poll);
-      nextSocket.close();
+      nextSocket?.close();
     };
-  }, [fetchState]);
+  }, [fetchState, useSocketTransport]);
 
   async function login(name: string, role: UserRole) {
     setError('');
@@ -267,7 +268,7 @@ function useTournament(authUser: AppUser | null) {
       ...(typeof data === 'object' && data !== null ? data : {}),
       actor: authUser,
     };
-    if (socket?.connected) {
+    if (useSocketTransport && socket?.connected) {
       socket.emit(event, actionData);
       return;
     }
@@ -318,6 +319,14 @@ function BudgetList({ participants, currentParticipantId }: { participants: Part
       {!orderedParticipants.length && <p className="empty">No joined players yet.</p>}
     </div>
   );
+}
+
+function bidPayload(participantId: string, amount: number, nextBid: number) {
+  return {
+    participantId,
+    amount,
+    autoNext: amount === nextBid,
+  };
 }
 
 function AuthGate({
@@ -738,7 +747,7 @@ function PlayerPortal({
           <input value={amount} onChange={(event) => setAmount(Number(event.target.value))} type="number" step={state.settings.bidIncrement} />
           <button disabled={!canBid} onClick={() => setAmount(nextBid)}>Next bid</button>
           <button disabled={!canBid} onClick={() => setAmount(nextBid + state.settings.bidIncrement)}>+10M</button>
-          <button className="primary" disabled={!canBid} onClick={() => send('auction:bid', { participantId: participant.id, amount })}>
+          <button className="primary" disabled={!canBid} onClick={() => send('auction:bid', bidPayload(participant.id, amount, nextBid))}>
             <Wallet size={16} /> Place bid
           </button>
         </div>
@@ -961,7 +970,7 @@ function Auction({
           ))}
         </select>
         <input value={amount} onChange={(event) => setAmount(Number(event.target.value))} type="number" step={state.settings.bidIncrement} />
-        <button className="primary" onClick={() => send('auction:bid', { participantId: bidder, amount })}>
+        <button className="primary" disabled={!currentPlayer} onClick={() => send('auction:bid', bidPayload(bidder, amount, nextBid))}>
           <BadgeDollarSign size={16} /> Bid {formatCoins(amount)}
         </button>
         <div className="ledger compact">

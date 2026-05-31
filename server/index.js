@@ -348,11 +348,19 @@ function randomNominate() {
   nominatePlayer(pool[Math.floor(Math.random() * pool.length)].id);
 }
 
-function validateBid(participantId, amount) {
+function nextValidBid() {
+  return state.auction.currentBid ? state.auction.currentBid + state.settings.bidIncrement : state.settings.minimumBid;
+}
+
+function bidAmountFor(amount, autoNext) {
+  return autoNext ? nextValidBid() : Number(amount);
+}
+
+function validateBid(participantId, amount, autoNext = false) {
   normalizeBudgets();
   const participant = participantById(participantId);
   const playerId = state.auction.currentPlayerId;
-  const numericAmount = Number(amount);
+  const numericAmount = bidAmountFor(amount, autoNext);
 
   if (!participant) return 'Participant not found.';
   if (!playerId) return 'No player is currently nominated.';
@@ -369,17 +377,18 @@ function validateBid(participantId, amount) {
   return null;
 }
 
-function placeBid(participantId, amount) {
-  const message = validateBid(participantId, amount);
+function placeBid(participantId, amount, autoNext = false) {
+  const bidAmount = bidAmountFor(amount, autoNext);
+  const message = validateBid(participantId, bidAmount, false);
   if (message) throw new Error(message);
 
-  state.auction.currentBid = Number(amount);
+  state.auction.currentBid = bidAmount;
   state.auction.highestBidderId = participantId;
   state.auction.bidLog.unshift({
     id: id('bid'),
     playerId: state.auction.currentPlayerId,
     participantId,
-    bidAmount: Number(amount),
+    bidAmount,
     timestamp: new Date().toISOString(),
   });
 
@@ -769,7 +778,7 @@ function applyAction(event, payload = {}) {
       const participant = participantById(payload.participantId);
       if (!participant) throw new Error('Participant not found.');
       if (!canActForParticipant(actor, participant)) throw new Error('Players can only bid for their own slot.');
-      placeBid(payload.participantId, payload.amount);
+      placeBid(payload.participantId, payload.amount, payload.autoNext === true);
     },
     'auction:sell': () => {
       requireAdmin(payload);
