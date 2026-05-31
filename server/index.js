@@ -275,6 +275,16 @@ function loginUser(payload) {
   if (!name) throw new Error('Name is required.');
 
   const role = payload.role === 'admin' ? 'admin' : 'player';
+  if (role === 'admin') {
+    const existingAdmin = state.users.find((user) => user.role === 'admin' && normalizedName(user.name) === normalizedName(name));
+    if (existingAdmin) {
+      existingAdmin.lastSeenAt = new Date().toISOString();
+      return existingAdmin;
+    }
+    if (state.users.some((user) => user.role === 'admin')) {
+      throw new Error('Admin access already exists. Sign in with an existing admin name.');
+    }
+  }
   if (role === 'player' && !state.participants.some((participant) => normalizedName(participant.name) === normalizedName(name))) {
     throw new Error('Player access is limited to the configured owners in Setup.');
   }
