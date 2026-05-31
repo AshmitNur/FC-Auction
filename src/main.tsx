@@ -52,7 +52,18 @@ type Participant = {
 
 type Purchase = { id: string; playerId: string; purchasePrice: number; purchasedAt: string };
 type UserRole = 'admin' | 'player';
-type AppUser = { id: string; name: string; role: UserRole; createdAt?: string; lastSeenAt?: string; updatedAt?: string };
+type AppUser = {
+  id: string;
+  name: string;
+  role: UserRole;
+  participantId?: string;
+  teamName?: string;
+  group?: 'A' | 'B';
+  slot?: number;
+  createdAt?: string;
+  lastSeenAt?: string;
+  updatedAt?: string;
+};
 type Fixture = {
   id: string;
   round: string;
@@ -253,7 +264,7 @@ function useTournament(authUser: AppUser | null) {
       const nextPayload = await response.json();
       if (!response.ok) throw new Error(nextPayload.error || 'Sign in failed.');
       setPayload(nextPayload);
-      const user = nextPayload.state.users.find((item: AppUser) => item.name.toLowerCase() === name.trim().toLowerCase());
+      const user = nextPayload.state.users.find((item: AppUser) => item.role === role && item.name.toLowerCase() === name.trim().toLowerCase());
       if (!user) throw new Error('User profile was not created.');
       return user as AppUser;
     } catch (requestError) {
@@ -828,7 +839,12 @@ function Setup({ state, send }: { state: AppState; send: (event: string, data?: 
         <div className="participant-list">
           {(state.users || []).map((user) => (
             <div className="user-editor" key={user.id}>
-              <strong>{user.name}</strong>
+              <div>
+                <strong>{user.name}</strong>
+                {user.role === 'player' && (
+                  <small>{user.teamName || 'No team'} / Group {user.group || '-'} / Slot {user.slot || '-'}</small>
+                )}
+              </div>
               <select value={user.role} onChange={(event) => send('user:update', { userId: user.id, role: event.target.value })}>
                 <option value="player">Player</option>
                 <option value="admin">Admin</option>

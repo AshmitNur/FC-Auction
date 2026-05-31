@@ -724,9 +724,16 @@ th {
 }
 
 .user-editor strong {
+  display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.user-editor small {
+  display: block;
+  color: var(--muted);
+  margin-top: 3px;
 }
 
 .auction-grid {

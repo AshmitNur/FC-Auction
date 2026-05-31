@@ -215,8 +215,57 @@ function userIdFor(name) {
   return `user_${crypto.createHash('sha1').update(normalizedName(name)).digest('hex').slice(0, 10)}`;
 }
 
+function participantSlot(participant) {
+  const numericId = Number(String(participant.id || '').replace('participant_', ''));
+  if (Number.isInteger(numericId) && numericId >= 1) {
+    return participant.group === 'B' ? numericId - 6 : numericId;
+  }
+  return null;
+}
+
+function userFromParticipant(participant) {
+  const name = cleanName(participant.name);
+  return {
+    id: userIdFor(name),
+    name,
+    role: 'player',
+    participantId: participant.id,
+    teamName: participant.teamName,
+    group: participant.group,
+    slot: participantSlot(participant),
+    createdAt: participant.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 function normalizeUsers(nextState = state) {
   nextState.users = Array.isArray(nextState.users) ? nextState.users : [];
+  const adminsByName = new Map();
+  nextState.users
+    .filter((user) => user?.role === 'admin' && cleanName(user.name))
+    .forEach((user) => {
+      adminsByName.set(normalizedName(user.name), {
+        ...user,
+        id: userIdFor(user.name),
+        name: cleanName(user.name),
+        role: 'admin',
+      });
+    });
+
+  const playersByName = new Map();
+  (nextState.participants || [])
+    .filter((participant) => cleanName(participant.name))
+    .forEach((participant) => {
+      const key = normalizedName(participant.name);
+      const existing = nextState.users.find((user) => user?.role === 'player' && normalizedName(user.name) === key);
+      playersByName.set(key, {
+        ...userFromParticipant(participant),
+        createdAt: existing?.createdAt || participant.createdAt || new Date().toISOString(),
+        lastSeenAt: existing?.lastSeenAt,
+      });
+    });
+
+  nextState.users = [...adminsByName.values(), ...playersByName.values()];
   return nextState;
 }
 
@@ -226,7 +275,10 @@ function loginUser(payload) {
   if (!name) throw new Error('Name is required.');
 
   const role = payload.role === 'admin' ? 'admin' : 'player';
-  const existing = state.users.find((user) => normalizedName(user.name) === normalizedName(name));
+  if (role === 'player' && !state.participants.some((participant) => normalizedName(participant.name) === normalizedName(name))) {
+    throw new Error('Player access is limited to the configured owners in Setup.');
+  }
+  const existing = state.users.find((user) => user.role === role && normalizedName(user.name) === normalizedName(name));
   if (existing) {
     existing.lastSeenAt = new Date().toISOString();
     return existing;
