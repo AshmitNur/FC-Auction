@@ -7,8 +7,11 @@ function createPostgresStore(connectionString, options = {}) {
   const pool = new Pool({
     connectionString,
     ssl: { rejectUnauthorized: false },
-    max: 4,
-    idleTimeoutMillis: 30_000,
+    max: 1,
+    idleTimeoutMillis: 1_000,
+    connectionTimeoutMillis: 8_000,
+    maxLifetimeSeconds: 30,
+    allowExitOnIdle: true,
   });
 
   async function init() {

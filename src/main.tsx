@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { io, Socket } from 'socket.io-client';
 import {
@@ -224,17 +224,32 @@ function useTournament(authUser: AppUser | null) {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [error, setError] = useState('');
   const useSocketTransport = import.meta.env.DEV;
+  const payloadRef = useRef<Payload | null>(null);
+  const stateRequestRef = useRef<Promise<void> | null>(null);
+  const pollErrorCountRef = useRef(0);
+
+  useEffect(() => {
+    payloadRef.current = payload;
+  }, [payload]);
 
   const fetchState = useCallback(async (silent = false) => {
+    if (stateRequestRef.current) return stateRequestRef.current;
+    stateRequestRef.current = (async () => {
     try {
-      const response = await fetch(`${serverUrl}/api/state`);
+      const response = await fetch(`${serverUrl}/api/state`, { cache: 'no-store' });
       const nextPayload = await response.json();
       if (!response.ok) throw new Error(nextPayload.error || 'Unable to load tournament state.');
       setPayload(nextPayload);
+      pollErrorCountRef.current = 0;
       if (!silent) setError('');
     } catch (requestError) {
+      pollErrorCountRef.current += 1;
       if (!silent) setError(requestError instanceof Error ? requestError.message : 'Unable to load tournament state.');
+    } finally {
+      stateRequestRef.current = null;
     }
+    })();
+    return stateRequestRef.current;
   }, []);
 
   useEffect(() => {
@@ -244,11 +259,34 @@ function useTournament(authUser: AppUser | null) {
     nextSocket?.on('state', setPayload);
     nextSocket?.on('action-error', ({ message }) => setError(message));
     if (nextSocket) setSocket(nextSocket);
-    const poll = window.setInterval(() => {
-      fetchState(true);
-    }, useSocketTransport ? 1500 : 800);
+
+    let cancelled = false;
+    let poll: number | undefined;
+    const pollDelay = () => {
+      const currentPayload = payloadRef.current;
+      const auction = currentPayload?.state.auction;
+      const activeAuction = auction?.status === 'running' && Boolean(auction.currentPlayerId);
+      const visible = document.visibilityState === 'visible';
+      const baseDelay = useSocketTransport ? 1500 : activeAuction ? 1500 : 5000;
+      const hiddenDelay = visible ? baseDelay : 15000;
+      return Math.min(hiddenDelay + pollErrorCountRef.current * 1500, 20000);
+    };
+    const schedule = () => {
+      if (cancelled) return;
+      poll = window.setTimeout(async () => {
+        await fetchState(true);
+        schedule();
+      }, pollDelay());
+    };
+    schedule();
+    const refreshOnVisible = () => {
+      if (document.visibilityState === 'visible') fetchState(true);
+    };
+    document.addEventListener('visibilitychange', refreshOnVisible);
     return () => {
-      window.clearInterval(poll);
+      cancelled = true;
+      if (poll) window.clearTimeout(poll);
+      document.removeEventListener('visibilitychange', refreshOnVisible);
       nextSocket?.close();
     };
   }, [fetchState, useSocketTransport]);

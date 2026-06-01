@@ -9,12 +9,18 @@ const SUPABASE_STATE_TABLE = process.env.SUPABASE_STATE_TABLE || 'fc26_app_state
 const SUPABASE_PLAYER_TABLE = process.env.SUPABASE_PLAYER_TABLE || 'fc26_players';
 const SUPABASE_STATE_KEY = process.env.SUPABASE_STATE_KEY || 'default';
 const DATABASE_URL = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || '';
+const ENSURE_SCHEMA = process.env.ENSURE_SCHEMA === 'true' || process.env.NODE_ENV !== 'production';
+const LOAD_REMOTE_PLAYERS = process.env.LOAD_REMOTE_PLAYERS === 'true';
 
 const playerPayload = JSON.parse(fs.readFileSync(PLAYER_FILE, 'utf8'));
 let players = playerPayload.players;
 let playerById = new Map(players.map((player) => [player.id, player]));
 let remotePlayersLoaded = false;
 let pool;
+let schemaReady;
+let cachedState = null;
+let cachedStateUntil = 0;
+const STATE_CACHE_MS = Number(process.env.STATE_CACHE_MS || 1500);
 
 function db() {
   if (!DATABASE_URL) throw new Error('DATABASE_URL is not configured.');
@@ -22,11 +28,54 @@ function db() {
     pool = new pg.Pool({
       connectionString: DATABASE_URL,
       ssl: { rejectUnauthorized: false },
-      max: 2,
-      idleTimeoutMillis: 10_000,
+      max: 1,
+      idleTimeoutMillis: 1_000,
+      connectionTimeoutMillis: 8_000,
+      maxLifetimeSeconds: 30,
+      allowExitOnIdle: true,
     });
   }
   return pool;
+}
+
+function isConnectionPressure(error) {
+  const message = String(error?.message || error || '').toLowerCase();
+  return message.includes('max client connections') || message.includes('too many clients') || message.includes('emaxconn');
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function withConnectionRetry(operation) {
+  let lastError;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (!isConnectionPressure(error)) throw error;
+      await sleep(120 * (attempt + 1) + Math.floor(Math.random() * 80));
+    }
+  }
+  throw lastError;
+}
+
+function rememberState(state) {
+  cachedState = state;
+  cachedStateUntil = Date.now() + STATE_CACHE_MS;
+  return state;
+}
+
+function cloneState(state) {
+  return typeof structuredClone === 'function' ? structuredClone(state) : JSON.parse(JSON.stringify(state));
+}
+
+function cachedReadableState() {
+  if (!cachedState || Date.now() > cachedStateUntil) return null;
+  const nextState = cloneState(cachedState);
+  const timed = applyTimer(nextState);
+  return timed.changed ? null : timed.state;
 }
 
 function id(prefix) {
@@ -88,7 +137,9 @@ function defaultState() {
 }
 
 async function initSchema() {
-  await db().query(`
+  if (!ENSURE_SCHEMA) return;
+  if (!schemaReady) {
+    schemaReady = withConnectionRetry(() => db().query(`
     create table if not exists public.${SUPABASE_STATE_TABLE} (
       key text primary key,
       state jsonb not null,
@@ -107,17 +158,33 @@ async function initSchema() {
       player jsonb not null,
       updated_at timestamptz not null default now()
     );
-  `);
+    `)).catch((error) => {
+      schemaReady = null;
+      throw error;
+    });
+  }
+  await schemaReady;
 }
 
 async function loadPlayers() {
   if (remotePlayersLoaded) return;
+  if (!LOAD_REMOTE_PLAYERS) {
+    remotePlayersLoaded = true;
+    return;
+  }
   await initSchema();
-  const result = await db().query(`
+  let result;
+  try {
+    result = await withConnectionRetry(() => db().query(`
     select player
     from public.${SUPABASE_PLAYER_TABLE}
     order by overall_rating desc, rank asc
-  `);
+  `));
+  } catch (error) {
+    if (!isConnectionPressure(error)) throw error;
+    remotePlayersLoaded = true;
+    return;
+  }
   if (result.rows.length) {
     players = result.rows.map((row) => row.player).filter(Boolean);
     playerById = new Map(players.map((player) => [player.id, player]));
@@ -147,25 +214,33 @@ async function seedStateIfNeeded(client) {
 async function readState() {
   await initSchema();
   await loadPlayers();
-  const client = await db().connect();
+  const cached = cachedReadableState();
+  if (cached) return cached;
+
+  const result = await withConnectionRetry(() => db().query(
+    `select state from public.${SUPABASE_STATE_TABLE} where key = $1`,
+    [SUPABASE_STATE_KEY],
+  ));
+  const state = result.rows[0]?.state;
+  if (state) {
+    const nextState = applyTimer(state);
+    if (!nextState.changed) return rememberState(nextState.state);
+  }
+
+  const client = await withConnectionRetry(() => db().connect());
   try {
     await client.query('begin');
-    const state = await seedStateIfNeeded(client);
-    const nextState = applyTimer(state);
+    const locked = await client.query(
+      `select state from public.${SUPABASE_STATE_TABLE} where key = $1 for update`,
+      [SUPABASE_STATE_KEY],
+    );
+    const lockedState = locked.rows[0]?.state || (await seedStateIfNeeded(client));
+    const nextState = applyTimer(lockedState);
     if (nextState.changed) {
-      const locked = await client.query(
-        `select state from public.${SUPABASE_STATE_TABLE} where key = $1 for update`,
-        [SUPABASE_STATE_KEY],
-      );
-      const lockedState = applyTimer(locked.rows[0]?.state || defaultState());
-      if (lockedState.changed) {
-        await saveState(client, lockedState.state);
-      }
-      await client.query('commit');
-      return lockedState.state;
+      await saveState(client, nextState.state);
     }
     await client.query('commit');
-    return nextState.state;
+    return rememberState(nextState.state);
   } catch (error) {
     await client.query('rollback');
     throw error;
@@ -177,7 +252,7 @@ async function readState() {
 async function mutateState(event, data = {}) {
   await initSchema();
   await loadPlayers();
-  const client = await db().connect();
+  const client = await withConnectionRetry(() => db().connect());
   try {
     await client.query('begin');
     const result = await client.query(
@@ -189,7 +264,7 @@ async function mutateState(event, data = {}) {
     applyAction(state, event, data);
     await saveState(client, state);
     await client.query('commit');
-    return state;
+    return rememberState(state);
   } catch (error) {
     await client.query('rollback');
     throw error;
