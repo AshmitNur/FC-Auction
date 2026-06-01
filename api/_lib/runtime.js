@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const pg = require('pg');
+const { createClient } = require('@supabase/supabase-js');
 
 const ROOT = process.cwd();
 const PLAYER_FILE = path.join(ROOT, 'data', 'fc26-players-81-plus.json');
@@ -9,6 +10,9 @@ const SUPABASE_STATE_TABLE = process.env.SUPABASE_STATE_TABLE || 'fc26_app_state
 const SUPABASE_PLAYER_TABLE = process.env.SUPABASE_PLAYER_TABLE || 'fc26_players';
 const SUPABASE_STATE_KEY = process.env.SUPABASE_STATE_KEY || 'default';
 const DATABASE_URL = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || '';
+const SUPABASE_URL = process.env.SUPABASE_URL || '';
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || '';
+const FORCE_POSTGRES_READS = process.env.FORCE_POSTGRES_READS === 'true';
 const ENSURE_SCHEMA = process.env.ENSURE_SCHEMA === 'true' || process.env.NODE_ENV !== 'production';
 const LOAD_REMOTE_PLAYERS = process.env.LOAD_REMOTE_PLAYERS === 'true';
 
@@ -17,6 +21,7 @@ let players = playerPayload.players;
 let playerById = new Map(players.map((player) => [player.id, player]));
 let remotePlayersLoaded = false;
 let pool;
+let supabase;
 let schemaReady;
 let cachedState = null;
 let cachedStateUntil = 0;
@@ -36,6 +41,20 @@ function db() {
     });
   }
   return pool;
+}
+
+function restDb() {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return null;
+  if (!supabase) {
+    supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+  }
+  return supabase;
+}
+
+function canReadViaRest() {
+  return !FORCE_POSTGRES_READS && Boolean(restDb());
 }
 
 function isConnectionPressure(error) {
@@ -211,11 +230,37 @@ async function seedStateIfNeeded(client) {
   return nextState;
 }
 
+async function readStateViaRest() {
+  const client = restDb();
+  if (!client) return null;
+  const { data, error } = await client
+    .from(SUPABASE_STATE_TABLE)
+    .select('state')
+    .eq('key', SUPABASE_STATE_KEY)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data?.state || null;
+}
+
 async function readState() {
   await initSchema();
   await loadPlayers();
   const cached = cachedReadableState();
   if (cached) return cached;
+
+  if (canReadViaRest()) {
+    try {
+      const restState = await readStateViaRest();
+      if (restState) {
+        const nextState = applyTimer(restState);
+        if (!nextState.changed) return rememberState(nextState.state);
+      }
+    } catch (error) {
+      if (!isConnectionPressure(error)) {
+        console.warn(`Supabase REST state read skipped: ${error.message}`);
+      }
+    }
+  }
 
   const result = await withConnectionRetry(() => db().query(
     `select state from public.${SUPABASE_STATE_TABLE} where key = $1`,
